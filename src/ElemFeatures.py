@@ -1,5 +1,7 @@
 #!/usr/bin/python3
 
+import sys
+import json
 from selenium import webdriver
 # from selenium.common.exceptions import TimeoutException
 # from selenium.webdriver.support.ui import WebDriverWait # 2.4.0
@@ -217,10 +219,22 @@ class ElemFeatures():
 
 
 def main():
-    elems = getVisibleElems("http://www.github.com/")
+    import re
+    for line in sys.stdin:
+        site = line
+        if not re.match(r'https?//', site):
+            site = "http://" + site
 
-    [ElemFeatures(e) for e in elems]
-    pass
+        elems = getVisibleElems(site)
+        features = [ElemFeatures(e) for e in elems]
+
+        j = json.dumps(
+            {
+                'site': site,
+                'features': features,
+            })
+
+        print("{}, {}".format(site, j))
 
 
 if __name__ == '__main__':
