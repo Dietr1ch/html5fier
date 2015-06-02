@@ -4,9 +4,6 @@ import sys
 import re
 import ujson
 from selenium import webdriver
-# from selenium.common.exceptions import TimeoutException
-# from selenium.webdriver.support.ui import WebDriverWait # 2.4.0
-# from selenium.webdriver.support import expected_conditions as EC # 2.26.0
 
 w = 1024
 h = 768
@@ -56,6 +53,14 @@ def getChildren(elem):
 
 class ElemFeatures():
     _element = None  # Selenium element
+    _children = []  # Selenium element
+
+    Tag = ""
+
+    # Element features
+    # ----------------
+
+    # Element size and location
     s_x = -1  # Width
     s_y = -1  # Height
     s_a = -1  # Area
@@ -63,19 +68,49 @@ class ElemFeatures():
     l_x = -1  # X
     l_y = -1  # Y
 
+    # Location if visible
     losiv_x = -1  # X
     losiv_y = -1  # Y
 
-    Tag = ""
-
+    # Element text data
     textSize = -1
     textWords = -1
 
+    # Pending Features
+    # ================
+
+    # Children data
+    _children_count = 0
+    _children_normalized_histogram = []
+
+    # Links
+    # -----
+    # Links inside tree
+    _links_tree_relative = 0
+    _links_tree_same_site = 0
+    _links_tree_external = 0
+    # Direct children links
+    _links_children_relative = 0
+    _links_children_same_site = 0
+    _links_children_external = 0
+
+    # Style
+    # -----
+    _font_size_px = -1
+    _font_bold = None  # None, False, True
+    _font_italic = None
+    _font_color = None
+
     def __init__(self, elem):
+        # Set up
         self._element = elem
+        self._children = getChildren(elem)
+
+        # Calculate features
         self.getFeatures()
         self.getTagName()
         self.getText()
+        pass
 
     def getFeatures(self):
         s = self._element.size
@@ -90,7 +125,6 @@ class ElemFeatures():
         l = self._element.location_once_scrolled_into_view
         self.losiv_x = l['x']
         self.losiv_y = l['y']
-
         pass
 
     def getTagName(self):
@@ -100,21 +134,26 @@ class ElemFeatures():
     def getText(self):
         self.textSize = len(self._element.text)
         self.textWords = len(self._element.text.split())
+        pass
 
 
 def main():
     for site in sys.stdin:
-        site = site.strip()
-        elems = getVisibleElems(site)
-        features = [ElemFeatures(e) for e in elems]
+        try:
+            site = site.strip()
 
-        j = ujson.dumps(
-            {
-                'site': site,
-                'elements': features,
-            })
+            elems = getVisibleElems(site)
+            features = [ElemFeatures(e) for e in elems]
 
-        print("{}, {}\n".format(site, j))
+            j = ujson.dumps(
+                {
+                    'site': site,
+                    'elements': features,
+                })
+            print("{}, {}\n".format(site, j))
+
+        except Exception as e:
+            print("Failed to get '{}' ({})\n".format(site, e))
 
 
 if __name__ == '__main__':
