@@ -55,7 +55,7 @@ def getChildren(elem):
 
 
 class ElemFeatures():
-    e = None  # Selenium element
+    _element = None  # Selenium element
     s_x = -1  # Width
     s_y = -1  # Height
     s_a = -1  # Area
@@ -66,39 +66,40 @@ class ElemFeatures():
     losiv_x = -1  # X
     losiv_y = -1  # Y
 
-    tag = ""
+    Tag = ""
 
     textSize = -1
     textWords = -1
 
     def __init__(self, elem):
-        self.getFeatures(elem)
-        self.getTagName(elem)
-        self.getText(elem)
+        self._element = elem
+        self.getFeatures()
+        self.getTagName()
+        self.getText()
 
-    def getFeatures(self, elem):
-        s = elem.size
+    def getFeatures(self):
+        s = self._element.size
         self.s_x = s['width']
         self.s_y = s['height']
         self.s_a = self.s_x * self.s_y
 
-        l = elem.location
+        l = self._element.location
         self.l_x = l['x']
         self.l_y = l['y']
 
-        l = elem.location_once_scrolled_into_view
+        l = self._element.location_once_scrolled_into_view
         self.losiv_x = l['x']
         self.losiv_y = l['y']
 
         pass
 
-    def getTagName(self, elem):
-        self.tag = elem.tag_name
+    def getTagName(self):
+        self.Tag = self._element.tag_name
         pass
 
-    def getText(self, elem):
-        self.textSize = len(elem.text)
-        self.textWords = len(elem.text.split())
+    def getText(self):
+        self.textSize = len(self._element.text)
+        self.textWords = len(self._element.text.split())
 
 
 def main():
@@ -110,7 +111,7 @@ def main():
         j = ujson.dumps(
             {
                 'site': site,
-                'features': features,
+                'elements': features,
             })
 
         print("{}, {}\n".format(site, j))
