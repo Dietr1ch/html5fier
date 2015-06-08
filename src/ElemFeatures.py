@@ -1,53 +1,52 @@
 #!/usr/bin/python3
 
-import sys
 import re
-import ujson
-from selenium import webdriver
 
-w = 1024
-h = 768
-
-# Set up Chromium
-driver = webdriver.Chrome()
-menuHeight = 61
-driver.set_window_size(w, h+menuHeight)
-
-siteRegex = re.compile(r'^https?://')
+siteRegex = re.compile(r'https?://')
 
 
-def getElems(url):
+def site_elements(driver, url):
     driver.get(url)
     return driver.find_elements_by_xpath("//*")
 
 
-def getBodyElems(url):
+def site_body_elements(driver, url):
     driver.get(url)
     return driver.find_elements_by_xpath("/html/body//*")
 
 
-def getVisibleElems(url):
+def site_visible_elements(url):
     if siteRegex.match(url) is None:
         site = "http://{}".format(url)
     else:
         site = url
 
     print("Navigating to '{}'...".format(site))
-    elems = getBodyElems(site)
+    elems = site_body_elements(site)
     return [e for e in elems if e.is_displayed()]
 
 
-def getLinkTarget(elem):
-    t = elem.get_attribute("href")
-
-    if t is None:
-        return None
-    else:
-        # TODO: check relative or same site link
-        return None
+def elem_attr(elem, attr):
+    return elem.get_attribute(attr)
 
 
-def getChildren(elem):
+def elem_link_target(elem):
+    return elem.get_attribute("href")
+
+
+def elem_id(elem):
+    return elem.get_attribute("id")
+
+
+def elem_title(elem):
+    return elem.get_attribute("title")
+
+
+def children(elem):
+    return elem.find_elements_by_xpath("./*")
+
+
+def descendants(elem):
     return elem.find_elements_by_xpath(".//*")
 
 
@@ -104,7 +103,7 @@ class ElemFeatures():
     def __init__(self, elem):
         # Set up
         self._element = elem
-        self._children = getChildren(elem)
+        self._children = children(elem)
 
         # Calculate features
         self.getFeatures()
@@ -135,26 +134,3 @@ class ElemFeatures():
         self.textSize = len(self._element.text)
         self.textWords = len(self._element.text.split())
         pass
-
-
-def main():
-    for site in sys.stdin:
-        try:
-            site = site.strip()
-
-            elems = getVisibleElems(site)
-            features = [ElemFeatures(e) for e in elems]
-
-            j = ujson.dumps(
-                {
-                    'site': site,
-                    'elements': features,
-                })
-            print("{}, {}\n".format(site, j))
-
-        except Exception as e:
-            print("Failed to get '{}' ({})\n".format(site, e))
-
-
-if __name__ == '__main__':
-    main()
