@@ -13,9 +13,12 @@ driver = ElemFeatures.get_driver()
 divTags = SEMANTIC_TAGS.union({"div"})
 
 
-i = 1
+i = 0
 for url in sys.stdin:
+    i += 1
     try:
+        print("\n")  # 2 lines
+        print("%4d: %s" % (i, url.strip()))
         url = site(url)
         site_stats()
 
@@ -33,12 +36,17 @@ for url in sys.stdin:
                 tag_elems[t] = ElemFeatures.site_body_tag(t)
 
             # 3. Show features
-            print("{} {}:".format(i, site))
             print("Features for 'div tags'")
+
+            divs = 0
             for f in feats:
                 elemJSON = ujson.dumps(f)
-                if f.Tag in divTags:
+                if f.Tag == "div":
+                    divs += 1
+                elif f.Tag in SEMANTIC_TAGS:
                     print("  {}".format(elemJSON))
+
+            print("  + {} div tags".format(divs))
 
     except Exception as e:
         print("Failed to get '{}' ({})\n".format(site, e))

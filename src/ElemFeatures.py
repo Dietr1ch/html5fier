@@ -90,7 +90,7 @@ def site_visible_elements(driver=None):
 def site_stats(driver=None):
     t = "div"
     l = len(site_body_tag(t))
-    print("{}: {}".format(t, l))
+    print("div: {}".format(l))
 
     for t in SEMANTIC_TAGS:
         l = len(site_body_tag(t))
@@ -195,11 +195,20 @@ class ElemFeatures():
 
         # Calculate features
         if not self._scanned:
-            self.getFeatures()
             self.getTagName()
-            self.getText()
+            if self._useful_tag:
+                self.getFeatures()
+                self.getText()
 
         self._scanned = True
+        pass
+
+    def getTagName(self):
+        self.Tag = self._element.tag_name.lower()
+        if self.Tag in SEMANTIC_TAGS:
+            self._useful_tag = True
+        elif self.Tag == 'div':
+            self._useful_tag = True
         pass
 
     def getFeatures(self):
@@ -215,14 +224,6 @@ class ElemFeatures():
         l = self._element.location_once_scrolled_into_view
         self.losiv_x = l['x']
         self.losiv_y = l['y']
-        pass
-
-    def getTagName(self):
-        self.Tag = self._element.tag_name.lower()
-        if self.Tag in SEMANTIC_TAGS:
-            self._useful_tag = True
-        elif self.Tag == 'div':
-            self._useful_tag = True
         pass
 
     def getText(self):
