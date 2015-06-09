@@ -1,4 +1,4 @@
-SEMANTIC_TAGS = {
+SEMANTIC_TAGS = (
   'article',    # Independent, self-contained content (forum post, blog post, news story, comment).
   'aside',      # Some content aside from the content it is placed in (should be related to the surrounding content).
   'figcaption', # A caption for a <figure> element.
@@ -7,9 +7,9 @@ SEMANTIC_TAGS = {
   'header',     # Container for introductory content or a set of navigational links.
   'nav',        # A set of navigation links.
   'section',    # Sections in a document, such as chapters, headers, footers, or any other sections of the document.
-}
+)
 
-TAGS = {
+TAGS = (
   'a',
   'abbr',
   'address',
@@ -118,4 +118,4 @@ TAGS = {
   'var',
   'video',
   'wbr',
-}
+)

@@ -25,6 +25,7 @@ if __name__ == '__main__':
 
     total_tags = sum(site_dict['element_hist'].values())
 
+    semantic_tag_set = set(SEMANTIC_TAGS)
     valid_tags = 0
     semantic_tags = 0
     tag_counts = []
@@ -34,7 +35,7 @@ if __name__ == '__main__':
 
       valid_tags += count
 
-      if tag in SEMANTIC_TAGS:
+      if tag in semantic_tag_set:
         semantic_tags += count
 
     semantic_tag_frac = 1. * semantic_tags / valid_tags
