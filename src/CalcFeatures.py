@@ -2,22 +2,25 @@
 
 import sys
 import ujson
-from selenium import webdriver
+
+from tags import SEMANTIC_TAGS
 
 import ElemFeatures
+from ElemFeatures import site
 
-# Set up Chromium
-driver = webdriver.Chrome()
-w = 1024
-h = 768
-menuHeight = 61
-driver.set_window_size(w, h+menuHeight)
+driver = ElemFeatures.get_driver()
 
-for site in sys.stdin:
+divTags = SEMANTIC_TAGS.union({"div"})
+
+for url in sys.stdin:
     try:
-        site = site.strip()
-        elems = ElemFeatures.site_visible_elements(site)
+        site(url)
+        elems = ElemFeatures.site_visible_elements()
         features = [ElemFeatures(e) for e in elems]
+
+        j = {}
+        for t in divTags:
+            j[t] = ElemFeatures.site_body_tag(t)
 
         j = ujson.dumps(
             {

@@ -1,6 +1,5 @@
 SEMANTIC_TAGS = (
   'article',    # Independent, self-contained content (forum post, blog post, news story, comment).
-  'aside',      # Some content aside from the content it is placed in (should be related to the surrounding content).
   'figcaption', # A caption for a <figure> element.
   'figure',     # Self-contained content, like illustrations, diagrams, photos, code listings, etc.
   'footer',     # A footer for a document or section (should contain information about its containing element).

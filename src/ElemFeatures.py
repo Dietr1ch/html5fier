@@ -2,29 +2,73 @@
 
 import re
 
+from tags import SEMANTIC_TAGS
+
 siteRegex = re.compile(r'https?://')
 
+global dri
+dri = None
 
-def site_elements(driver, url):
+
+def get_driver(driver=None):
+    global dri
+    if driver is not None:
+        return driver
+    if dri is not None:
+        return dri
+    from selenium import webdriver
+
+    # Set up Chromium
+    dri = webdriver.Chrome()
+    w = 1024
+    h = 768
+    menuHeight = 61
+    dri.set_window_size(w, h+menuHeight)
+
+    return dri
+
+
+def site(url="github.com", driver=None):
+    driver = get_driver(driver)
+
+    url = url.strip()
+    if siteRegex.match(url) is None:
+        url = "http://{}".format(url)
+
+    print("Navigating to '{}'...".format(url))
     driver.get(url)
+
+
+def site_elements(driver=None):
+    driver = get_driver(driver)
     return driver.find_elements_by_xpath("//*")
 
 
-def site_body_elements(driver, url):
-    driver.get(url)
+def site_body_elements(driver=None):
+    driver = get_driver(driver)
     return driver.find_elements_by_xpath("/html/body//*")
 
 
-def site_visible_elements(url):
-    if siteRegex.match(url) is None:
-        site = "http://{}".format(url)
-    else:
-        site = url
+def site_body_tag(tag, driver=None):
+    driver = get_driver(driver)
+    return driver.find_elements_by_xpath("/html/body//{}".format(tag))
 
-    print("Navigating to '{}'...".format(site))
-    elems = site_body_elements(site)
+
+def site_visible_elements(driver=None):
+    driver = get_driver(driver)
+
+    elems = site_body_elements(driver)
     return [e for e in elems if e.is_displayed()]
 
+
+def site_stats(driver=None):
+    t = "div"
+    l = len(site_body_tag(t))
+    print("{}: {}".format(t, l))
+
+    for t in SEMANTIC_TAGS:
+        l = len(site_body_tag(t))
+        print("{}: {}".format(t, l))
 
 def elem_attr(elem, attr):
     return elem.get_attribute(attr)
@@ -54,6 +98,8 @@ class ElemFeatures():
     _element = None  # Selenium element
     _children = []  # Selenium element
 
+    _useful_tag = False  # If the element helps the classifier
+    _scanned = False  # If the element was examined
     Tag = ""
 
     # Element features
@@ -106,9 +152,12 @@ class ElemFeatures():
         self._children = children(elem)
 
         # Calculate features
-        self.getFeatures()
-        self.getTagName()
-        self.getText()
+        if not self._scanned:
+            self.getFeatures()
+            self.getTagName()
+            self.getText()
+
+        self._scanned = True
         pass
 
     def getFeatures(self):
@@ -127,7 +176,11 @@ class ElemFeatures():
         pass
 
     def getTagName(self):
-        self.Tag = self._element.tag_name
+        self.Tag = self._element.tag_name.lower()
+        if self.Tag in SEMANTIC_TAGS:
+            self._useful_tag = True
+        elif self.Tag == 'div':
+            self._useful_tag = True
         pass
 
     def getText(self):
