@@ -1,6 +1,4 @@
 SEMANTIC_TAGS = {
-  'abbr',       # An abbreviation or an acronym.
-  'address',    # Contact information for the author/owner of a document or an article.
   'article',    # Independent, self-contained content (forum post, blog post, news story, comment).
   'aside',      # Some content aside from the content it is placed in (should be related to the surrounding content).
   'figcaption', # A caption for a <figure> element.
