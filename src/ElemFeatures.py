@@ -4,6 +4,10 @@ import re
 
 from tags import SEMANTIC_TAGS
 
+import contextlib
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.expected_conditions import staleness_of
+
 siteRegex = re.compile(r'https?://')
 
 global dri
@@ -37,6 +41,17 @@ def site(url="github.com", driver=None):
 
     print("Navigating to '{}'...".format(url))
     driver.get(url)
+    wait_for_page_load(driver)
+    print("Done")
+
+    return url
+
+
+@contextlib.contextmanager
+def wait_for_page_load(driver, timeout=30):
+    old_page = driver.find_element_by_tag_name('html')
+    yield
+    WebDriverWait(driver, timeout).until(staleness_of(old_page))
 
 
 def site_elements(driver=None):
@@ -58,7 +73,18 @@ def site_visible_elements(driver=None):
     driver = get_driver(driver)
 
     elems = site_body_elements(driver)
-    return [e for e in elems if e.is_displayed()]
+    visible = []
+    is_displayed_fails = 0
+    for e in elems:
+        try:
+            if e.is_displayed():
+                visible.append(e)
+        except Exception as e:
+            is_displayed_fails += 1
+    if is_displayed_fails > 0:
+        print("WARN: {} elements failed to eval 'is_displayed'"
+              .format(is_displayed_fails))
+    return visible
 
 
 def site_stats(driver=None):
@@ -69,6 +95,7 @@ def site_stats(driver=None):
     for t in SEMANTIC_TAGS:
         l = len(site_body_tag(t))
         print("{}: {}".format(t, l))
+
 
 def elem_attr(elem, attr):
     return elem.get_attribute(attr)
@@ -92,6 +119,21 @@ def children(elem):
 
 def descendants(elem):
     return elem.find_elements_by_xpath(".//*")
+
+
+def features(elements):
+    feats = []
+    fails = 0
+    for e in elements:
+        try:
+            f = ElemFeatures(e)
+            feats.append(f)
+        except Exception as e:
+            fails += 1
+
+    if fails > 0:
+        print("Failed to get features on {} element(s)".format(fails))
+    return feats
 
 
 class ElemFeatures():
