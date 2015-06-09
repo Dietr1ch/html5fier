@@ -1,21 +1,47 @@
+import collections
+
 import fileinput
 import json
+import re
+
+from tags import TAGS, SEMANTIC_TAGS
 
 
 if __name__ == '__main__':
-  tags = set()
   json_string = '\n'.join(fileinput.input())
   site_list = json.loads(json_string)
-  for site_dict in site_list:
-    tags |= set(site_dict['element_hist'].keys())
 
-  tags = list(tags)
   # Header.
-  print('url,{}'.format(','.join(tags)))
-  for site_dict in site_list:
-    tag_counts = []
-    for tag in tags:
-      tag_counts.append(site_dict['element_hist'].get(tag, 0))
+  print('site_url,total_tags,valid_tags,semantic_tags,semantic_tag_frac,{}'.format(','.join(TAGS)))
 
-    tag_counts = map(str, tag_counts)
-    print('{},{}'.format(site_dict['url'], ','.join(tag_counts)))
+  for site_dict in site_list:
+    url = site_dict['url']
+    match = re.match(r'(https?://[\w.]+).*', url)
+
+    if not match:
+      continue
+
+    url = match.group(1) + '/'
+
+    total_tags = sum(site_dict['element_hist'].values())
+
+    valid_tags = 0
+    semantic_tags = 0
+    tag_counts = []
+    for tag in TAGS:
+      count = site_dict['element_hist'].get(tag, 0)
+      tag_counts.append(count)
+
+      valid_tags += count
+
+      if tag in SEMANTIC_TAGS:
+        semantic_tags += count
+
+    semantic_tag_frac = 1. * semantic_tags / valid_tags
+
+    cols = [url,
+            total_tags, valid_tags,
+            semantic_tags, semantic_tag_frac] + tag_counts
+
+    cols = map(str, cols)
+    print(','.join(cols))
