@@ -1,0 +1,22 @@
+CSS_ATTRIBUTES = {
+    'font-size-adjust',
+    'font-stretch',
+    'font',
+    'font-style',
+    'font-variant',
+    'font-weight',
+    'font-size',
+    'font-family',
+
+    'word-spacing',
+    'letter-spacing',
+    'white-space',
+    'word-wrap',
+    'text-align',
+    'text-align-last',
+    'text-decoration',
+    'text-transform',
+    'text-shadow',
+    'text-indent',
+    'text-underline-position',
+}
