@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import re
+import ujson
 
 from tags import SEMANTIC_TAGS
 
@@ -12,6 +13,12 @@ siteRegex = re.compile(r'https?://')
 
 global dri
 dri = None
+
+
+def to_json(elemFeature):
+    elemJSON = ujson.dumps(elemFeature)
+    print("  {}".format(elemJSON))
+    return elemJSON
 
 
 def get_driver(driver=None):
@@ -92,9 +99,13 @@ def site_stats(driver=None):
     l = len(site_body_tag(t))
     print("div: {}".format(l))
 
+    s = 0
     for t in SEMANTIC_TAGS:
         l = len(site_body_tag(t))
+        s += l
         print("{}: {}".format(t, l))
+
+    return s
 
 
 def elem_attr(elem, attr):
@@ -137,73 +148,75 @@ def features(elements):
 
 
 class ElemFeatures():
-    _element = None  # Selenium element
-    _children = []  # Selenium element
-
-    _useful_tag = False  # If the element helps the classifier
-    _scanned = False  # If the element was examined
-    Tag = ""
-
-    # Element features
-    # ----------------
-
-    # Element size and location
-    s_x = -1  # Width
-    s_y = -1  # Height
-    s_a = -1  # Area
-
-    l_x = -1  # X
-    l_y = -1  # Y
-
-    # Location if visible
-    losiv_x = -1  # X
-    losiv_y = -1  # Y
-
-    # Element text data
-    textSize = -1
-    textWords = -1
-
-    # Pending Features
-    # ================
-
-    # Children data
-    _children_count = 0
-    _children_normalized_histogram = []
-
-    # Links
-    # -----
-    # Links inside tree
-    _links_tree_relative = 0
-    _links_tree_same_site = 0
-    _links_tree_external = 0
-    # Direct children links
-    _links_children_relative = 0
-    _links_children_same_site = 0
-    _links_children_external = 0
-
-    # Style
-    # -----
-    _font_size_px = -1
-    _font_bold = None  # None, False, True
-    _font_italic = None
-    _font_color = None
 
     def __init__(self, elem):
+        self.default_values()
+
         # Set up
         self._element = elem
         self._children = children(elem)
 
         # Calculate features
-        if not self._scanned:
-            self.getTagName()
-            if self._useful_tag:
-                self.getFeatures()
-                self.getText()
-
-        self._scanned = True
+        self.features_tag_name()
+        if True or self._useful_tag:
+            self.features_render()
+            self.features_text()
+            self.features_style()
+            self.features_tree()
         pass
 
-    def getTagName(self):
+    def default_values(self):
+
+        # Element data
+        # ============
+
+        self._element = None  # Selenium element
+        self._children = []  # Selenium elements
+
+        self._useful_tag = False  # If the element helps the classifier
+        self.Tag = ""
+
+        # Element features
+        # ----------------
+
+        # Element size and location
+        self.size_x = -1  # Width
+        self.size_y = -1  # Height
+        self.size_area = -1  # Area
+        self.location_x = -1  # X
+        self.location_y = -1  # Y
+        self.location_visible_x = -1  # X
+        self.location_visible_y = -1  # Y
+
+        # Element text data
+        self.text_size = -1
+        self.text_words = -1
+
+        # Pending Features
+        # ----------------
+
+        # Children data
+        #   * children_count = 0
+        #   * children_normalized_histogram = []
+
+        # Links inside tree
+        #   * links_tree_relative = 0
+        #   * links_tree_same_site = 0
+        #   * links_tree_external = 0
+        # Direct children links
+        #   * links_children_relative = 0
+        #   * links_children_same_site = 0
+        #   * links_children_external = 0
+
+        # Style
+        # -----
+        #   * font_size_px = -1
+        #   * font_bold = None  # None, False, True
+        #   * font_italic = None
+        #   * font_color = None
+        pass
+
+    def features_tag_name(self):
         self.Tag = self._element.tag_name.lower()
         if self.Tag in SEMANTIC_TAGS:
             self._useful_tag = True
@@ -211,22 +224,58 @@ class ElemFeatures():
             self._useful_tag = True
         pass
 
-    def getFeatures(self):
+    def features_render(self):
         s = self._element.size
-        self.s_x = s['width']
-        self.s_y = s['height']
-        self.s_a = self.s_x * self.s_y
+        self.size_x = s['width']
+        self.size_y = s['height']
+        self.size_area = self.size_x * self.size_y
 
         l = self._element.location
-        self.l_x = l['x']
-        self.l_y = l['y']
+        self.location_x = l['x']
+        self.location_y = l['y']
 
         l = self._element.location_once_scrolled_into_view
-        self.losiv_x = l['x']
-        self.losiv_y = l['y']
+        self.location_visible_x = l['x']
+        self.location_visible_y = l['y']
         pass
 
-    def getText(self):
-        self.textSize = len(self._element.text)
-        self.textWords = len(self._element.text.split())
+    def features_text(self):
+        self.text_size = len(self._element.text)
+        self.text_words = len(self._element.text.split())
         pass
+
+    def features_style(self):
+        pass
+
+    def features_tree(self):
+        self.features_tree_links()
+        self.features_tree_images()
+        pass
+
+    def features_tree_links(self):
+        pass
+
+    def features_tree_images(self):
+        pass
+
+
+class FeatureTree:
+
+    def __init__(self, driver=None):
+        self._driver = get_driver(driver)
+
+        self.site = self.driver.current_url
+        self.elements = site_visible_elements(self.driver)
+
+        root = self._driver.find_element_by_xpath("/html/body")
+        self.root = self.build_tree(root)
+
+    @staticmethod
+    def build_tree(element, depthLimit=-1):
+        # if depthLimit == 0:
+        # return
+        return {'element': element,
+                'features': ElemFeatures(element),
+                'children': [FeatureTree.build_tree(c)
+                             for c in children(element, depthLimit-1)]
+                }
