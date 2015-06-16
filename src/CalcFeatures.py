@@ -16,49 +16,60 @@ divTags = [t for t in SEMANTIC_TAGS].append("div")
 feature_labels = None
 
 i = 0
-for url in sys.stdin:
-    i += 1
-    try:
-        print("##### %4d: %s" % (i, url.strip()))
-        url = site(url)
-        semantic_tag_count = site_stats()
 
-        with open("site-list.txt", "a") as f:
-            f.write("{},{}\n".format(semantic_tag_count, url))
+with open("feats.txt", "w") as feats_file:
 
-        # Too slow
-        if semantic_tag_count < 5:
-            print("# Site has only {} semantic tag samples. Skipping..."
-                  .format(semantic_tag_count))
-            continue
+    for url in sys.stdin:
+        i += 1
+        try:
+            print("##### %4d: %s" % (i, url.strip()))
+            url = site(url)
+            semantic_tag_count = site_stats()
 
-        # continue
+            with open("site-list.txt", "a") as f:
+                f.write("{},{}\n".format(semantic_tag_count, url))
 
-        # 1. Calculate Features
-        #print("Getting visible elements...")
-        #elems = site_visible_elements()
-        print("# Calculating features...")
-        feats = FeatureTree(driver)
-        #feats = features(elems)
-        print("# Done calculating features")
+            # Too slow
+            if semantic_tag_count < 5:
+                print("# Site has only {} semantic tag samples. Skipping..."
+                      .format(semantic_tag_count))
+                continue
 
-        # 3. Print features
+            # continue
 
-        for node in feats:
-            if node.use:
-                if not feature_labels:
-                    feature_labels = node.features.keys()
-                    print('url,tag,{}'.format(','.join(feature_labels)))
+            # 1. Calculate Features
+            #print("Getting visible elements...")
+            #elems = site_visible_elements()
+            print("# Calculating features...")
+            feats = FeatureTree(driver)
+            #feats = features(elems)
+            print("# Done calculating features")
 
-                feature_list = []
-                for feat_name in feature_labels:
-                    feature_list.append(node.get_feature(feat_name))
+            # 3. Print features
 
-                tag = node.element.tag_name.lower()
-                values = [url, tag] + feature_list
-                print(','.join(map(str, values)))
+            for node in feats:
+                if node.use:
+                    tag = node.element.tag_name.lower()
 
-    except Exception as e:
-        print("# Failed to get '{}' ({})\n".format(url, e))
+                    if tag not in SEMANTIC_TAGS:
+                        continue
+
+                    if not feature_labels:
+                        feature_labels = node.features.keys()
+                        feats_str = 'url,tag,{}'.format(','.join(feature_labels))
+                        print(feats_str)
+                        feats_file.write('{}\n'.format(feats_str))
+
+                    feature_list = []
+                    for feat_name in feature_labels:
+                        feature_list.append(node.get_feature(feat_name))
+
+                    values = [url, tag] + feature_list
+                    feats_str = ','.join(map(str, values))
+                    print(feats_str)
+                    feats_file.write('{}\n'.format(feats_str))
+
+        except Exception as e:
+            print("# Failed to get '{}' ({})\n".format(url, e))
 
 driver.close()
