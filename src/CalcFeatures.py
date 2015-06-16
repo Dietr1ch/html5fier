@@ -6,19 +6,20 @@ import ujson
 from tags import SEMANTIC_TAGS
 
 import ElemFeatures
-from ElemFeatures import site, site_stats, site_visible_elements, features
+from ElemFeatures import site, site_stats, site_visible_elements, features, FeatureTree
 
 driver = ElemFeatures.get_driver()
 
 divTags = [t for t in SEMANTIC_TAGS].append("div")
 
 
+feature_labels = None
+
 i = 0
 for url in sys.stdin:
     i += 1
     try:
-        print("\n")  # 2 lines
-        print("%4d: %s" % (i, url.strip()))
+        print("##### %4d: %s" % (i, url.strip()))
         url = site(url)
         semantic_tag_count = site_stats()
 
@@ -27,36 +28,37 @@ for url in sys.stdin:
 
         # Too slow
         if semantic_tag_count < 5:
-            print("Site has only {} semantic tag samples. Skipping..."
+            print("# Site has only {} semantic tag samples. Skipping..."
                   .format(semantic_tag_count))
             continue
 
         # continue
 
         # 1. Calculate Features
-        elems = site_visible_elements()
-        print("Calculating features...")
-        feats = features(elems)
-        print("Done")
+        #print("Getting visible elements...")
+        #elems = site_visible_elements()
+        print("# Calculating features...")
+        feats = FeatureTree(driver)
+        #feats = features(elems)
+        print("# Done calculating features")
 
-        # 2. Count semantic tag usage
-        tag_elems = {}
-        for t in divTags:
-            tag_elems[t] = ElemFeatures.site_body_tag(t)
+        # 3. Print features
 
-        # 3. Show features
-        print("Features for 'div tags'")
-        divs = 0
-        for f in feats:
-            elemJSON = ujson.dumps(f)
-            if f.Tag == "div":
-                divs += 1
-            elif f.Tag in SEMANTIC_TAGS:
-                print("  {}".format(elemJSON))
+        for node in feats:
+            if node.use:
+                if not feature_labels:
+                    feature_labels = node.features.keys()
+                    print('url,tag,{}'.format(','.join(feature_labels)))
 
-        print("  + {} div tags".format(divs))
+                feature_list = []
+                for feat_name in feature_labels:
+                    feature_list.append(node.get_feature(feat_name))
+
+                tag = node.element.tag_name.lower()
+                values = [url, tag] + feature_list
+                print(','.join(map(str, values)))
 
     except Exception as e:
-        print("Failed to get '{}' ({})\n".format(site, e))
+        print("# Failed to get '{}' ({})\n".format(url, e))
 
 driver.close()

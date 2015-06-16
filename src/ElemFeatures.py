@@ -1,7 +1,11 @@
 #!/usr/bin/python3
 
+import collections
 import re
 import ujson
+from urllib.parse import urlparse
+
+import numpy as np
 
 from tags import SEMANTIC_TAGS
 
@@ -9,7 +13,10 @@ import contextlib
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support.expected_conditions import staleness_of
 
+SEMANTIC_TAG_SET = set(SEMANTIC_TAGS)
 siteRegex = re.compile(r'https?://')
+
+MIN_SIZE = 16
 
 global dri
 dri = None
@@ -46,10 +53,10 @@ def site(url="github.com", driver=None):
     if siteRegex.match(url) is None:
         url = "http://{}".format(url)
 
-    print("Navigating to '{}'...".format(url))
+    print("# Navigating to '{}'...".format(url))
     driver.get(url)
     wait_for_page_load(driver)
-    print("Done")
+    print("# Done")
 
     return url
 
@@ -89,7 +96,7 @@ def site_visible_elements(driver=None):
         except Exception as e:
             is_displayed_fails += 1
     if is_displayed_fails > 0:
-        print("WARN: {} elements failed to eval 'is_displayed'"
+        print("# WARN: {} elements failed to eval 'is_displayed'"
               .format(is_displayed_fails))
     return visible
 
@@ -97,13 +104,13 @@ def site_visible_elements(driver=None):
 def site_stats(driver=None):
     t = "div"
     l = len(site_body_tag(t))
-    print("div: {}".format(l))
+    #print("# div: {}".format(l))
 
     s = 0
     for t in SEMANTIC_TAGS:
         l = len(site_body_tag(t))
         s += l
-        print("{}: {}".format(t, l))
+        #print("# {}: {}".format(t, l))
 
     return s
 
@@ -143,139 +150,439 @@ def features(elements):
             fails += 1
 
     if fails > 0:
-        print("Failed to get features on {} element(s)".format(fails))
+        print("# Failed to get features on {} element(s)".format(fails))
     return feats
 
+################################################################################
+# Element feature base classes.
+################################################################################
 
-class ElemFeatures():
+class ElementFeature:
+    """Abstract base class for element features."""
 
-    def __init__(self, elem):
-        self.default_values()
+    @property
+    def element(self):
+        return self.node.element
 
-        # Set up
-        self._element = elem
-        self._children = children(elem)
+    def __init__(self, node):
+        # FeatureTree node.
+        self.node = node
+        self.value = None
 
-        # Calculate features
-        self.features_tag_name()
-        if True or self._useful_tag:
-            self.features_render()
-            self.features_text()
-            self.features_style()
-            self.features_tree()
-        pass
+    def _compute(self):
+        raise RuntimeError('Feature not implemented.')
 
-    def default_values(self):
+    def compute(self):
+        self.value = self._compute()
 
-        # Element data
-        # ============
 
-        self._element = None  # Selenium element
-        self._children = []  # Selenium elements
+class AggregateElementFeature(ElementFeature):
+    """An element feature that is computed with respect to the aggregate value
+    of some other feature across all other elements."""
 
-        self._useful_tag = False  # If the element helps the classifier
-        self.Tag = ""
+    # Cache for the aggregate values over node subsets.
+    cache = {}
 
-        # Element features
-        # ----------------
+    @classmethod
+    def clear_cache(cls):
+        cls.cache.clear()
 
-        # Element size and location
-        self.size_x = -1  # Width
-        self.size_y = -1  # Height
-        self.size_area = -1  # Area
-        self.location_x = -1  # X
-        self.location_y = -1  # Y
-        self.location_visible_x = -1  # X
-        self.location_visible_y = -1  # Y
+    def __init__(self, node, feature_name=None, aggregate_func=np.mean):
+        super(AggregateElementFeature, self).__init__(node)
+        self.feature_name = feature_name
+        self.aggregate_func = aggregate_func
 
-        # Element text data
-        self.text_size = -1
-        self.text_words = -1
+    def _compute(self):
+        agg_value = self.cache_read()
+        if agg_value is None:
+            values = []
+            for node in self.node.tree.root.bfs():
+                val = node.get_feature(self.feature_name)
+                if val is not None:
+                    values.append(val)
+            agg_value = self.aggregate_func(values)
+            self.cache_write(agg_value)
 
-        # Pending Features
-        # ----------------
+        return 1. * self.node.get_feature(self.feature_name) / agg_value
 
-        # Children data
-        #   * children_count = 0
-        #   * children_normalized_histogram = []
+    def get_cache_key(self):
+        return self.feature_name, self.aggregate_func
 
-        # Links inside tree
-        #   * links_tree_relative = 0
-        #   * links_tree_same_site = 0
-        #   * links_tree_external = 0
-        # Direct children links
-        #   * links_children_relative = 0
-        #   * links_children_same_site = 0
-        #   * links_children_external = 0
+    def cache_write(self, value):
+        """Saves a value computed over a set of nodes for this specific feature
+        to avoid re-computation.
+        """
+        self.cache[self.get_cache_key()] = value
 
-        # Style
-        # -----
-        #   * font_size_px = -1
-        #   * font_bold = None  # None, False, True
-        #   * font_italic = None
-        #   * font_color = None
-        pass
+    def cache_read(self):
+        return self.cache.get(self.get_cache_key())
 
-    def features_tag_name(self):
-        self.Tag = self._element.tag_name.lower()
-        if self.Tag in SEMANTIC_TAGS:
-            self._useful_tag = True
-        elif self.Tag == 'div':
-            self._useful_tag = True
-        pass
 
-    def features_render(self):
-        s = self._element.size
-        self.size_x = s['width']
-        self.size_y = s['height']
-        self.size_area = self.size_x * self.size_y
+class DescendantElementFeature(ElementFeature):
+    """A numerical element feature that is computed with respect to children
+    elements with a decay over the descendant degree."""
 
-        l = self._element.location
-        self.location_x = l['x']
-        self.location_y = l['y']
+    def __init__(self, node, feature_name=None, decay=np.exp, agg_func=np.mean,
+                 max_depth=None):
+        super(DescendantElementFeature, self).__init__(node)
+        self.feature_name = feature_name
+        self.decay = decay
+        self.max_depth = max_depth
+        self.agg_func = agg_func
 
-        l = self._element.location_once_scrolled_into_view
-        self.location_visible_x = l['x']
-        self.location_visible_y = l['y']
-        pass
+    def _compute(self):
+        features_per_level = self.node.get_descendant_feature(self.feature_name,
+                                                              self.max_depth)
 
-    def features_text(self):
-        self.text_size = len(self._element.text)
-        self.text_words = len(self._element.text.split())
-        pass
+        level_means = np.zeros((len(features_per_level), 2))
 
-    def features_style(self):
-        pass
+        for i, (level, feature_list) in enumerate(features_per_level.items()):
+            level_means[i, 0] = level
+            level_means[i, 1] = self.agg_func(np.ravel(feature_list))
 
-    def features_tree(self):
-        self.features_tree_links()
-        self.features_tree_images()
-        pass
+        decay = self.decay
+        if hasattr(self.decay, '__call__'):
+            decay = np.ravel(self.decay(level_means[:, 0]) + .00001)
 
-    def features_tree_links(self):
-        pass
+        weights = 1. / decay
+        return np.sum(weights * level_means[:, 1].ravel())
 
-    def features_tree_images(self):
-        pass
+
+class SiblingElementFeature(ElementFeature):
+    """A numerical element feature that is computed with respect to sibling
+    (cousin) elements with a decay over the sibling (cousin) degree."""
+
+    def __init__(self, node, feature_name=None, decay=np.exp, agg_func=np.mean,
+                 cousin_degree=None):
+        super(SiblingElementFeature, self).__init__(node)
+        self.feature_name = feature_name
+        self.decay = decay
+        self.cousin_degree = cousin_degree
+        self.agg_func = agg_func
+
+    def _compute(self):
+        features_per_level = collections.defaultdict(list)
+
+        features_per_level[0] = [self.node.get_feature(self.feature_name)]
+
+        ancestor_level = 0
+        ancestor = self.node
+        while True:
+            ancestor = ancestor.parent
+            ancestor_level += 1
+            if ancestor is None:
+                break
+
+            if (self.cousin_degree is not None and
+                ancestor_level > self.cousin_degree):
+                break
+
+            # BFS until we are at the same level.
+            for level, relative in ancestor.bfs():
+                if level < ancestor_level:
+                    continue
+                if level > ancestor_level:
+                    break
+                if relative == self.node:
+                    continue
+
+                val = relative.get_feature(self.feature_name)
+                if val is not None:
+                    features_per_level[level].append(val)
+
+        level_means = np.zeros((len(features_per_level), 2))
+
+        for i, (level, feature_list) in enumerate(features_per_level.items()):
+            level_means[i, 0] = level
+            level_means[i, 1] = self.agg_func(np.ravel(feature_list))
+
+        decay = self.decay
+        if hasattr(self.decay, '__call__'):
+            decay = np.ravel(self.decay(level_means[:, 0]) + .00001)
+
+        weights = 1. / decay
+        return np.sum(weights * level_means[:, 1])
+
+################################################################################
+# Concrete base element features.
+################################################################################
+
+class TagFeature(ElementFeature):
+    name = 'tag'
+
+    def _compute(self):
+        return self.element.tag_name.lower()
+
+
+class SemanticTagFeature(ElementFeature):
+    name = 'semantic_tag'
+
+    def _compute(self):
+        return self.element.tag_name.lower() in SEMANTIC_TAG_SET
+
+
+class WidthFeature(ElementFeature):
+    name = 'width'
+
+    def _compute(self):
+        return self.element.size['width']
+
+
+class HeightFeature(ElementFeature):
+    name = 'height'
+
+    def _compute(self):
+        return self.element.size['height']
+
+
+class AreaFeature(ElementFeature):
+    name = 'area'
+
+    def _compute(self):
+        return self.element.size['width'] * self.element.size['height']
+
+
+class AspectRatioFeature(ElementFeature):
+    name = 'aspect_ratio'
+
+    def _compute(self):
+        if self.element.size['height'] == 0:
+            return -1
+
+        return 1. * self.element.size['width'] / self.element.size['height']
+
+
+class XFeature(ElementFeature):
+    name = 'x'
+
+    def _compute(self):
+        return self.element.location['x']
+
+
+class YFeature(ElementFeature):
+    name = 'y'
+
+    def _compute(self):
+        return self.element.location['y']
+
+
+class VisibleXFeature(ElementFeature):
+    name = 'visible_x'
+
+    def _compute(self):
+        return self.element.location_once_scrolled_into_view['x']
+
+
+class VisibleYFeature(ElementFeature):
+    name = 'visible_y'
+
+    def _compute(self):
+        return self.element.location_once_scrolled_into_view['y']
+
+
+class TextCharLengthFeature(ElementFeature):
+    name = 'text_length'
+
+    def _compute(self):
+        return len(self.element.text)
+
+
+class TextWordLengthFeature(ElementFeature):
+    name = 'text_words'
+
+    def _compute(self):
+        return len(self.element.text.split())
+
+
+class ChildrenCountFeature(ElementFeature):
+    name = 'children_count'
+
+    def _compute(self):
+        return len(self.node.children)
+
+
+class LinkCountFeature(ElementFeature):
+    name = 'link_count'
+
+    def _compute(self):
+        anchors = self.node.element.find_elements_by_xpath('./a')
+
+        return len(anchors)
+
+
+class InternalLinkCountFeature(ElementFeature):
+    name = 'internal_link_count'
+
+    def _compute(self):
+        site = urlparse(self.node.tree.site).netloc
+
+        count = 0
+        hrefs = self.node.element.find_elements_by_xpath('./a')
+
+        for h in hrefs:
+            url = urlparse(h.get_attribute('href'))
+            if not url.netloc or site in url.netloc:
+                count += 1
+
+        return count
+
+
+BASE_FEATURES = (
+    #TagFeature,
+    SemanticTagFeature,
+    WidthFeature,
+    HeightFeature,
+    AreaFeature,
+    AspectRatioFeature,
+    XFeature,
+    YFeature,
+    VisibleXFeature,
+    VisibleYFeature,
+    TextCharLengthFeature,
+    TextWordLengthFeature,
+    ChildrenCountFeature,
+    LinkCountFeature,
+    InternalLinkCountFeature,
+)
+
+DESCENDANT_ELEMENT_FEATURES = [
+    ('descendant_count', dict(feature_name='children_count',
+                              decay=1.,
+                              agg_func=np.sum)),
+    ('descendant_score', dict(feature_name='children_count',
+                              agg_func=np.sum)),
+    ('descendant_link_count', dict(feature_name='link_count',
+                                   decay=1., agg_func=np.sum)),
+    ('descendant_link_score', dict(feature_name='link_count',
+                                   agg_func=np.sum)),
+    ('descendant_internal_link_count',
+     dict(feature_name='internal_link_count',
+          decay=1., agg_func=np.sum)),
+    ('descendant_internal_link_count',
+     dict(feature_name='internal_link_count', agg_func=np.sum)),
+]
+
+SIBLING_ELEMENT_FEATURES = [
+    ('sibling_link_count', dict(feature_name='link_count',
+                                decay=1., agg_func=np.sum)),
+    ('sibling_link_score', dict(feature_name='link_count',
+                                agg_func=np.sum)),
+    ('sibling_internal_link_count',
+     dict(feature_name='internal_link_count',
+          decay=1., agg_func=np.sum)),
+    ('sibling_internal_link_count',
+     dict(feature_name='internal_link_count', agg_func=np.sum)),
+]
+
+AGGREGATE_ELEMENT_FEATURES = []
 
 
 class FeatureTree:
 
+    class Node:
+        def __init__(self, element, tree, parent=None):
+            self.tree = tree
+            self.element = element
+            self.parent = parent
+            self.children = set()
+            self.features = {}
+
+            self.use = element.size['width'] > MIN_SIZE and element.size['height'] > MIN_SIZE
+
+        def bfs(self):
+            open_list = [(0, self)]
+
+            while open_list:
+                depth, node = open_list.pop(0)
+                yield depth, node
+
+                for child in node.children:
+                    open_list.append((depth + 1, child))
+
+        def get_feature(self, feature_name):
+            if feature_name in self.features:
+                return self.features[feature_name].value
+            return None
+
+        def get_descendant_feature(self, feature_name, max_depth=None):
+            """Returns a dict with features for descendants by level."""
+            features = collections.defaultdict(list)
+
+            for depth, node in self.bfs():
+                if max_depth is not None and depth > max_depth:
+                    break
+                val = node.get_feature(feature_name)
+                if val is not None:
+                    features[depth].append(val)
+
+            return features
+
+    def __iter__(self):
+        for _, node in self.root.bfs():
+            yield node
+
     def __init__(self, driver=None):
-        self._driver = get_driver(driver)
+        self.driver = get_driver(driver)
 
         self.site = self.driver.current_url
-        self.elements = site_visible_elements(self.driver)
 
-        root = self._driver.find_element_by_xpath("/html/body")
-        self.root = self.build_tree(root)
+        root = self.driver.find_element_by_xpath("/html/body")
+        self.root = self.build_tree(root, tree=self)
 
-    @staticmethod
-    def build_tree(element, depthLimit=-1):
+        # Compute features in order of dependence.
+        self.compute_features(self.root, BASE_FEATURES)
+
+        self.compute_relative_features(self.root, DescendantElementFeature,
+                                       DESCENDANT_ELEMENT_FEATURES)
+        self.compute_relative_features(self.root, SiblingElementFeature,
+                                       SIBLING_ELEMENT_FEATURES)
+        self.compute_relative_features(self.root, AggregateElementFeature,
+                                       AGGREGATE_ELEMENT_FEATURES)
+
+    @classmethod
+    def build_tree(cls, element, parent=None, tree=None):
         # if depthLimit == 0:
         # return
-        return {'element': element,
-                'features': ElemFeatures(element),
-                'children': [FeatureTree.build_tree(c)
-                             for c in children(element, depthLimit-1)]
-                }
+
+        node = cls.Node(element, tree, parent)
+
+        # Add children.
+        for child_element in children(element):
+            node.children.add(cls.build_tree(child_element, node, tree))
+
+        return node
+
+    @classmethod
+    def compute_features(cls, root_node, feature_set):
+        if root_node.use:
+            try:
+                for feature_class in feature_set:
+                    feature = feature_class(root_node)
+                    feature.compute()
+                    root_node.features[feature_class.name] = feature
+            except Exception as e:
+                print('# Failed to extract feature {}: {}'.format(
+                    feature_class.name, e.__class__.__name__))
+                root_node.use = False
+
+        for child_node in root_node.children:
+            cls.compute_features(child_node, feature_set)
+
+    @classmethod
+    def compute_relative_features(cls, root_node, feature_class, feature_set):
+        if root_node.use:
+            try:
+                for feature_name, feature_kwargs in feature_set:
+                    feature = feature_class(root_node, **feature_kwargs)
+                    setattr(feature, 'name', feature_name)
+                    feature.compute()
+                    root_node.features[feature_name] = feature
+            except Exception as e:
+                print('# Failed to extract feature {}: {}'.format(
+                    feature_name, e.__class__.__name__))
+                root_node.use = False
+
+        for child_node in root_node.children:
+            cls.compute_relative_features(child_node, feature_class,
+                                          feature_set)
+
